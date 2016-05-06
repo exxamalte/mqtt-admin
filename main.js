@@ -188,11 +188,27 @@ $dialogSettings.dialog({
         $password.val(config.password);
         config.clientIdSuffix ? $random.attr('checked', true) : $random.removeAttr('checked');
         $clientId.val(config.clientId);
+		$('#buttonDisconnect').button('option', 'disabled', (! mqttConnected));
     },
     close: function () {
         $topic.focus();
     },
     buttons: [
+	    {
+		    id: 'buttonDisconnect',
+		    text: 'Disconnect',
+			//disabled: (! mqttConnected),
+            click: function () {
+			    mqttDisconnect();
+			}			
+		},
+	    {
+		    id: 'buttonReconnect',
+		    text: 'Reconnect',
+            click: function () {
+			    mqttReconnect();
+			}			
+		},
         {
             text: 'Save Settings',
             click: function () {
@@ -1200,10 +1216,13 @@ if (config.mqttHost && config.mqttPort) {
         $host.val(config.mqttHost);
         $port.val(config.mqttPort);
         topicCount = 0;
-        setTimeout(function () {
-            $dialogSettings.dialog('open');
-            mqttConnect();
-        }, 500);
+		if (e.errorCode !== 0) {
+		    // assuming that the connection was accidentally lost, reconnecting now
+            setTimeout(function () {
+                $dialogSettings.dialog('open');
+                mqttConnect();
+            }, 500);
+		}
     };
 
 
@@ -1337,11 +1356,22 @@ function mqttConnect() {
             $dialogSettings.dialog('close');
 
             console.log('mqtt subscribe #');
-            client.subscribe('#');
+			var subscribeOptions = {
+			    onSuccess: function () {
+				    console.log('subscribe acknowledgement received from server');
+				},
+				onFailure: function (e) {
+				    console.log('subscribe request failed or timed out: ' + e.errorCode);
+				}				
+			};
+            client.subscribe('#', subscribeOptions);
 
             if ($topic.val() !== '') $load_gridStatus.show();
             mqttRetainTimeout();
-        }
+        },
+		onFailure: function(e) {
+		    console.log('Unable to connect: ' + e.errorCode + ' / ' + e.errorMessage);
+		}
     };
     console.log('protocol:', config.protocol);
     if (config.protocol === 'wss') connectOptions.useSSL = true;
@@ -1371,7 +1401,13 @@ function mqttDisconnect() {
         mqttConnected = false;
         client.disconnect();
         console.log('mqtt disconnected');
+		$('#buttonDisconnect').button('option', 'disabled', (! mqttConnected));
     }
+}
+
+function mqttReconnect() {
+    mqttDisconnect();
+	mqttConnect();
 }
 
 var indicatorTimeout = null;
